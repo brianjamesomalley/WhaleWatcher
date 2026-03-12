@@ -1,0 +1,576 @@
+import { useState, useEffect, useRef } from "react";
+
+const TICKERS = ["KRBY", "KRAB", "SNDY", "PTRK", "SQRD", "PLNK", "GLRY", "ANCH", "TRTN", "NEPT"];
+const TACTICS = [
+  "Jellyfish Net Dump", "Anchor Short Drop", "Krabby Patty Wash Trade",
+  "Sandy's PUT Ladder", "Squidward Dark Pool", "Plankton Bear Raid",
+  "Trident Gamma Squeeze", "Bubble Blow & Pop", "Barnacle Block Trade",
+  "Mrs. Puff Naked Short"
+];
+const ENTITIES = [
+  "PLANKTON_CHUM_CO", "MR_KRABS_FUND", "SANDY_CAPITAL", "LARRY_ARB",
+  "MERMAID_SHORT", "NEPTUNE_WHALE", "PATCHY_ALPHA", "DUTCHMAN_DARK"
+];
+const EXCHANGES = ["BIKINI POOL", "ROCK BOTTOM", "GOOFY GOOBER", "DARK KELP", "TRENCH OTC"];
+
+function seededRand(seed) {
+  let s = seed;
+  return () => {
+    s = (s * 1664525 + 1013904223) & 0xffffffff;
+    return (s >>> 0) / 0xffffffff;
+  };
+}
+
+function generateEvents(seed = 12345) {
+  const r = seededRand(seed);
+  return Array.from({ length: 14 }, (_, i) => ({
+    id: i,
+    ticker: TICKERS[Math.floor(r() * TICKERS.length)],
+    entity: ENTITIES[Math.floor(r() * ENTITIES.length)],
+    tactic: TACTICS[Math.floor(r() * TACTICS.length)],
+    exchange: EXCHANGES[Math.floor(r() * EXCHANGES.length)],
+    volume: (r() * 9 + 1).toFixed(2) + "M",
+    premium: "$" + (r() * 50 + 2).toFixed(1) + "M",
+    severity: r() > 0.66 ? "DANGER" : r() > 0.33 ? "FISHY" : "SUSPECT",
+    delta: (r() > 0.5 ? "-" : "+") + (r() * 8).toFixed(2) + "%",
+    bearish: r() > 0.55,
+    timestamp: new Date(Date.now() - Math.floor(r() * 3600000)).toLocaleTimeString(),
+    confidence: Math.floor(r() * 30 + 70),
+    bubbles: Math.floor(r() * 5 + 1),
+  }));
+}
+
+function generatePriceHistory(seed = 42) {
+  const r = seededRand(seed);
+  let price = 100 + r() * 200;
+  return Array.from({ length: 60 }, (_, i) => {
+    price += (r() - 0.49) * price * 0.013;
+    return { i, price: Math.max(10, price) };
+  });
+}
+
+function Bubble({ style }) {
+  return (
+    <div style={{
+      position: "absolute",
+      borderRadius: "50%",
+      border: "2px solid rgba(255,255,255,0.4)",
+      background: "radial-gradient(circle at 30% 30%, rgba(255,255,255,0.3), rgba(135,206,235,0.1))",
+      ...style,
+    }} />
+  );
+}
+
+function FloatingBubbles() {
+  const bubbles = Array.from({ length: 18 }, (_, i) => ({
+    size: 8 + (i * 7) % 28,
+    left: (i * 17 + 5) % 100,
+    delay: (i * 0.7) % 8,
+    dur: 6 + (i * 1.3) % 8,
+  }));
+  return (
+    <div style={{ position: "fixed", inset: 0, pointerEvents: "none", overflow: "hidden", zIndex: 0 }}>
+      {bubbles.map((b, i) => (
+        <div key={i} style={{
+          position: "absolute",
+          bottom: "-60px",
+          left: `${b.left}%`,
+          width: `${b.size}px`,
+          height: `${b.size}px`,
+          borderRadius: "50%",
+          border: "1.5px solid rgba(255,255,255,0.25)",
+          background: "radial-gradient(circle at 30% 30%, rgba(255,255,255,0.2), transparent)",
+          animation: `rise ${b.dur}s ${b.delay}s infinite ease-in`,
+        }} />
+      ))}
+    </div>
+  );
+}
+
+function Fish({ style }) {
+  return (
+    <svg viewBox="0 0 60 30" style={{ ...style, display: "block" }}>
+      <ellipse cx="28" cy="15" rx="20" ry="10" fill="currentColor" opacity="0.7" />
+      <polygon points="48,15 60,5 60,25" fill="currentColor" opacity="0.7" />
+      <circle cx="14" cy="12" r="3" fill="white" />
+      <circle cx="13" cy="12" r="1.5" fill="#1a3a5c" />
+      <path d="M18 18 Q22 22 28 20" stroke="white" strokeWidth="1.5" fill="none" opacity="0.6" />
+    </svg>
+  );
+}
+
+function Sparkline({ data, bearish, width = 120, height = 36 }) {
+  const min = Math.min(...data.map(d => d.price));
+  const max = Math.max(...data.map(d => d.price));
+  const range = max - min || 1;
+  const pts = data.map(d => {
+    const x = (d.i / (data.length - 1)) * width;
+    const y = height - ((d.price - min) / range) * height;
+    return `${x},${y}`;
+  }).join(" ");
+  const color = bearish ? "#ff6b35" : "#00c896";
+  return (
+    <svg width={width} height={height} style={{ display: "block" }}>
+      <polyline points={pts} fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function SeverityBadge({ level }) {
+  const map = {
+    DANGER: { bg: "#ff6b3520", border: "#ff6b35", text: "#ff6b35", emoji: "🦑" },
+    FISHY:  { bg: "#ffd16620", border: "#ffd166", text: "#ffd166", emoji: "🐡" },
+    SUSPECT:{ bg: "#06d6a020", border: "#06d6a0", text: "#06d6a0", emoji: "🐠" },
+  };
+  const c = map[level] || map.SUSPECT;
+  return (
+    <span style={{
+      background: c.bg, border: `1px solid ${c.border}`, color: c.text,
+      fontSize: "9px", fontFamily: "'Courier New', monospace",
+      padding: "2px 7px", borderRadius: "20px", letterSpacing: "0.5px", fontWeight: "700",
+      whiteSpace: "nowrap",
+    }}>{c.emoji} {level}</span>
+  );
+}
+
+function SeaSonarRing({ events }) {
+  const cx = 140, cy = 140, maxR = 120;
+  const r = seededRand(999);
+  const blips = events.slice(0, 9).map((e, i) => {
+    const angle = (i / 9) * Math.PI * 2 - Math.PI / 2;
+    const dist = e.severity === "DANGER" ? 0.25 : e.severity === "FISHY" ? 0.55 : 0.82;
+    const jit = (r() - 0.5) * 28;
+    return {
+      x: cx + Math.cos(angle + jit * 0.04) * (maxR * dist + jit * 0.25),
+      y: cy + Math.sin(angle + jit * 0.04) * (maxR * dist + jit * 0.25),
+      color: e.severity === "DANGER" ? "#ff6b35" : e.severity === "FISHY" ? "#ffd166" : "#06d6a0",
+      size: e.severity === "DANGER" ? 6 : 4,
+      pulse: e.severity === "DANGER",
+      emoji: e.severity === "DANGER" ? "🦑" : e.severity === "FISHY" ? "🐡" : "🐠",
+    };
+  });
+
+  return (
+    <svg width="280" height="280" style={{ display: "block" }}>
+      <defs>
+        <radialGradient id="sonarGrad" cx="50%" cy="50%" r="50%">
+          <stop offset="0%" stopColor="#0077b630" />
+          <stop offset="100%" stopColor="#00000000" />
+        </radialGradient>
+      </defs>
+      <circle cx={cx} cy={cy} r={maxR + 5} fill="#023e5820" stroke="#0096c730" strokeWidth="1" />
+      <circle cx={cx} cy={cy} r={maxR} fill="url(#sonarGrad)" />
+      {[0.3, 0.55, 0.8, 1].map(s => (
+        <circle key={s} cx={cx} cy={cy} r={maxR * s} fill="none" stroke="#90e0ef25" strokeWidth="1" strokeDasharray="4,5" />
+      ))}
+      {[0, 1, 2, 3].map(i => {
+        const a = (i / 4) * Math.PI;
+        return <line key={i}
+          x1={cx + Math.cos(a) * maxR} y1={cy + Math.sin(a) * maxR}
+          x2={cx - Math.cos(a) * maxR} y2={cy - Math.sin(a) * maxR}
+          stroke="#90e0ef15" strokeWidth="1" />;
+      })}
+      <line x1={cx} y1={cy} x2={cx} y2={cy - maxR} stroke="#06d6a050" strokeWidth="2.5" strokeLinecap="round">
+        <animateTransform attributeName="transform" type="rotate" from={`0 ${cx} ${cy}`} to={`360 ${cx} ${cy}`} dur="5s" repeatCount="indefinite" />
+      </line>
+      {blips.map((b, i) => (
+        <g key={i}>
+          {b.pulse && (
+            <circle cx={b.x} cy={b.y} r={b.size * 2.5} fill="none" stroke={b.color} strokeWidth="1" opacity="0.4">
+              <animate attributeName="r" from={b.size} to={b.size * 5} dur="1.8s" repeatCount="indefinite" />
+              <animate attributeName="opacity" from="0.5" to="0" dur="1.8s" repeatCount="indefinite" />
+            </circle>
+          )}
+          <circle cx={b.x} cy={b.y} r={b.size} fill={b.color} opacity="0.85" />
+          <text x={b.x} y={b.y - b.size - 3} textAnchor="middle" fontSize="10">{b.emoji}</text>
+        </g>
+      ))}
+      <text x={cx} y={cy + 4} textAnchor="middle" fontSize="18">🐋</text>
+      <text x={cx} y={cy + 20} textAnchor="middle" fill="#90e0ef80" fontSize="8" fontFamily="'Courier New', monospace">BIKINI BOTTOM</text>
+    </svg>
+  );
+}
+
+export default function WhaleWatcher() {
+  const [events, setEvents] = useState(() => generateEvents(12345));
+  const [selected, setSelected] = useState(null);
+  const [tab, setTab] = useState("feed");
+  const [alerts, setAlerts] = useState(3);
+  const [tick, setTick] = useState(0);
+  const [scanActive, setScanActive] = useState(true);
+  const tickRef = useRef(0);
+
+  useEffect(() => {
+    const iv = setInterval(() => {
+      tickRef.current++;
+      setTick(tickRef.current);
+      if (scanActive && tickRef.current % 7 === 0) {
+        setEvents(generateEvents(Date.now()));
+        setAlerts(a => a + (Math.random() > 0.65 ? 1 : 0));
+      }
+    }, 1000);
+    return () => clearInterval(iv);
+  }, [scanActive]);
+
+  const maxVol = Math.max(...events.map(e => parseFloat(e.volume)));
+  const criticals = events.filter(e => e.severity === "DANGER").length;
+  const priceHistory = selected ? generatePriceHistory(selected.id * 13 + 7) : null;
+
+  const bgStyle = {
+    background: "linear-gradient(180deg, #023e58 0%, #0077b6 30%, #0096c7 60%, #00b4d8 85%, #48cae4 100%)",
+  };
+
+  return (
+    <div style={{ minHeight: "100vh", ...bgStyle, color: "#caf0f8", fontFamily: "'Courier New', monospace", position: "relative", overflow: "hidden" }}>
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Luckiest+Guy&family=Patrick+Hand&display=swap');
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: #023e5840; border-radius: 3px; }
+        ::-webkit-scrollbar-thumb { background: #90e0ef60; border-radius: 3px; }
+        @keyframes rise {
+          0% { transform: translateY(0) scale(1); opacity: 0.7; }
+          100% { transform: translateY(-110vh) scale(1.4); opacity: 0; }
+        }
+        @keyframes sway { 0%,100%{transform:rotate(-3deg)} 50%{transform:rotate(3deg)} }
+        @keyframes bob { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-6px)} }
+        @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.3} }
+        @keyframes swim { 0%{transform:translateX(-80px)} 100%{transform:translateX(calc(100vw + 80px))} }
+        @keyframes slideIn { from{transform:translateY(10px);opacity:0} to{transform:none;opacity:1} }
+        .row-hover:hover { background: rgba(144,224,239,0.12) !important; cursor: pointer; }
+        .tab-btn { background: none; border: none; cursor: pointer; font-family: 'Patrick Hand', cursive; }
+        .fish-swim { position: fixed; bottom: 18%; animation: swim 22s linear infinite; pointer-events: none; z-index: 1; }
+        .fish-swim2 { position: fixed; bottom: 35%; animation: swim 31s 8s linear infinite; pointer-events: none; z-index: 1; }
+      `}</style>
+
+      <FloatingBubbles />
+
+      {/* Swimming fish */}
+      <div className="fish-swim">
+        <Fish style={{ width: "50px", color: "#ffd166", opacity: 0.5 }} />
+      </div>
+      <div className="fish-swim2">
+        <Fish style={{ width: "35px", color: "#06d6a0", opacity: 0.4 }} />
+      </div>
+
+      {/* Seaweed decoration */}
+      {[8, 20, 78, 92].map((left, i) => (
+        <div key={i} style={{
+          position: "fixed", bottom: 0, left: `${left}%`, zIndex: 0,
+          animation: `sway ${3 + i * 0.7}s ${i * 0.5}s ease-in-out infinite`,
+          transformOrigin: "bottom center", pointerEvents: "none",
+        }}>
+          <svg width="22" height="80" viewBox="0 0 22 80">
+            <path d={i % 2 === 0
+              ? "M11 80 Q3 65 11 50 Q19 35 11 20 Q3 10 11 0"
+              : "M11 80 Q19 65 11 50 Q3 35 11 20 Q19 10 11 0"}
+              stroke="#1a7a4a" strokeWidth="4" fill="none" strokeLinecap="round" opacity="0.6" />
+          </svg>
+        </div>
+      ))}
+
+      {/* Sand bottom */}
+      <div style={{
+        position: "fixed", bottom: 0, left: 0, right: 0, height: "55px", zIndex: 0,
+        background: "linear-gradient(180deg, transparent, #c9a84c80)",
+        borderTop: "2px solid #c9a84c40",
+      }}>
+        {[5,15,25,40,55,65,75,85,95].map((x, i) => (
+          <div key={i} style={{
+            position: "absolute", bottom: "4px", left: `${x}%`,
+            width: `${10 + i * 4}px`, height: `${6 + i * 2}px`,
+            borderRadius: "50%", background: "#c9a84c50",
+          }} />
+        ))}
+      </div>
+
+      <div style={{ position: "relative", zIndex: 2 }}>
+        {/* HEADER */}
+        <div style={{
+          display: "flex", alignItems: "center", justifyContent: "space-between",
+          padding: "14px 24px",
+          background: "linear-gradient(180deg, #012a3e90, #023e5860)",
+          backdropFilter: "blur(12px)",
+          borderBottom: "2px solid rgba(144,224,239,0.2)",
+        }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "14px" }}>
+            <div style={{ animation: "bob 3s ease-in-out infinite", fontSize: "36px" }}>🐋</div>
+            <div>
+              <div style={{
+                fontFamily: "'Luckiest Guy', cursive",
+                fontSize: "26px", letterSpacing: "3px",
+                color: "#90e0ef",
+                textShadow: "2px 2px 0 #012a3e, 0 0 20px #00b4d860",
+              }}>WHALE WATCHER</div>
+              <div style={{ fontSize: "10px", color: "#48cae4", letterSpacing: "2px", marginTop: "1px" }}>
+                🐚 BIKINI BOTTOM FINANCIAL SURVEILLANCE 🐚
+              </div>
+            </div>
+          </div>
+
+          <div style={{ display: "flex", alignItems: "center", gap: "16px" }}>
+            <div style={{
+              background: "#012a3e80", border: "1px solid #48cae440",
+              padding: "6px 14px", borderRadius: "20px", fontSize: "10px",
+              color: "#48cae4", display: "flex", alignItems: "center", gap: "6px"
+            }}>
+              <div style={{
+                width: "8px", height: "8px", borderRadius: "50%",
+                background: scanActive ? "#06d6a0" : "#ff6b35",
+                animation: scanActive ? "blink 1.5s infinite" : "none",
+              }} />
+              {scanActive ? "🔭 SCANNING THE DEEP" : "😴 PAUSED"}
+            </div>
+            <button onClick={() => setScanActive(s => !s)} style={{
+              background: scanActive ? "#ff6b3520" : "#06d6a020",
+              border: `1.5px solid ${scanActive ? "#ff6b35" : "#06d6a0"}`,
+              color: scanActive ? "#ff6b35" : "#06d6a0",
+              padding: "6px 14px", borderRadius: "20px", fontSize: "10px",
+              fontFamily: "'Patrick Hand', cursive", cursor: "pointer", letterSpacing: "1px",
+            }}>{scanActive ? "🛑 STOP" : "▶ GO"}</button>
+            <div style={{
+              background: "#ff6b3520", border: "1.5px solid #ff6b35",
+              borderRadius: "20px", padding: "6px 14px",
+              fontSize: "10px", color: "#ff6b35", fontFamily: "'Patrick Hand', cursive",
+            }}>🚨 {alerts} NET ALERTS</div>
+          </div>
+        </div>
+
+        {/* STAT BUBBLES */}
+        <div style={{
+          display: "flex", gap: "12px", padding: "14px 24px",
+          overflowX: "auto",
+        }}>
+          {[
+            { emoji: "🌊", label: "Active Events", val: events.length, color: "#90e0ef" },
+            { emoji: "🦑", label: "DANGER", val: criticals, color: "#ff6b35" },
+            { emoji: "🐡", label: "Fishy", val: events.filter(e => e.severity === "FISHY").length, color: "#ffd166" },
+            { emoji: "🌑", label: "Dark Kelp Pool", val: events.filter(e => e.exchange === "DARK KELP").length, color: "#a8dadc" },
+            { emoji: "🎯", label: "Avg Confidence", val: Math.round(events.reduce((a,e) => a+e.confidence,0)/events.length) + "%", color: "#06d6a0" },
+          ].map((s, i) => (
+            <div key={i} style={{
+              flex: "0 0 auto",
+              background: "linear-gradient(135deg, #012a3e90, #023e5870)",
+              border: "1.5px solid rgba(144,224,239,0.2)",
+              borderRadius: "16px", padding: "12px 20px",
+              backdropFilter: "blur(8px)", minWidth: "120px",
+              textAlign: "center",
+              boxShadow: "0 4px 20px #00000030",
+            }}>
+              <div style={{ fontSize: "22px", marginBottom: "4px" }}>{s.emoji}</div>
+              <div style={{ fontSize: "24px", color: s.color, fontFamily: "'Luckiest Guy', cursive", lineHeight: 1 }}>{s.val}</div>
+              <div style={{ fontSize: "9px", color: "#90e0ef80", letterSpacing: "1px", marginTop: "3px" }}>{s.label}</div>
+            </div>
+          ))}
+        </div>
+
+        {/* MAIN GRID */}
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 290px", gap: "0", margin: "0 12px 80px" }}>
+
+          {/* LEFT PANEL */}
+          <div style={{
+            background: "linear-gradient(180deg, #012a3e85, #023e5875)",
+            backdropFilter: "blur(14px)",
+            border: "1.5px solid rgba(144,224,239,0.15)",
+            borderRadius: "16px 0 0 16px",
+            overflow: "hidden",
+          }}>
+            {/* TABS */}
+            <div style={{ display: "flex", borderBottom: "1.5px solid rgba(144,224,239,0.15)", padding: "0 16px" }}>
+              {[
+                { id: "feed", label: "🌊 TIDE FEED" },
+                { id: "tactics", label: "🎣 FISHING TACTICS" },
+                { id: "entities", label: "🐙 SUSPECT CREW" },
+              ].map(t => (
+                <button key={t.id} className="tab-btn" onClick={() => setTab(t.id)} style={{
+                  padding: "12px 16px", fontSize: "11px",
+                  color: tab === t.id ? "#90e0ef" : "#48cae480",
+                  borderBottom: tab === t.id ? "2.5px solid #06d6a0" : "2.5px solid transparent",
+                  fontWeight: tab === t.id ? "bold" : "normal",
+                  letterSpacing: "1px", marginBottom: "-1px",
+                }}>{t.label}</button>
+              ))}
+            </div>
+
+            {/* FEED TAB */}
+            {tab === "feed" && (
+              <div style={{ overflowY: "auto", maxHeight: "60vh" }}>
+                <div style={{
+                  display: "grid", gridTemplateColumns: "72px 62px 1fr 140px 100px 68px 90px",
+                  padding: "8px 16px", fontSize: "8px", color: "#90e0ef60",
+                  letterSpacing: "1.5px", borderBottom: "1px solid rgba(144,224,239,0.08)",
+                }}>
+                  <span>TIME</span><span>TICKER</span><span>TACTIC</span>
+                  <span>ENTITY</span><span>EXCHANGE</span><span>VOL</span><span>STATUS</span>
+                </div>
+                {events.map((e, i) => (
+                  <div key={e.id} className="row-hover" onClick={() => setSelected(e === selected ? null : e)}
+                    style={{
+                      display: "grid", gridTemplateColumns: "72px 62px 1fr 140px 100px 68px 90px",
+                      padding: "10px 16px",
+                      borderBottom: "1px solid rgba(144,224,239,0.06)",
+                      borderLeft: selected?.id === e.id ? "3px solid #06d6a0" : "3px solid transparent",
+                      background: selected?.id === e.id ? "rgba(6,214,160,0.07)" : "transparent",
+                      animation: `slideIn 0.3s ${i * 0.04}s both`,
+                    }}>
+                    <span style={{ fontSize: "9px", color: "#90e0ef50" }}>{e.timestamp}</span>
+                    <span style={{ fontSize: "12px", color: e.bearish ? "#ff6b35" : "#06d6a0", fontFamily: "'Luckiest Guy', cursive", letterSpacing: "1px" }}>{e.ticker}</span>
+                    <span style={{ fontSize: "10px", color: "#caf0f8cc" }}>{e.tactic}</span>
+                    <span style={{ fontSize: "9px", color: "#ffd166cc" }}>{e.entity}</span>
+                    <span style={{ fontSize: "9px", color: e.exchange === "DARK KELP" ? "#ff9f4a" : "#90e0ef70" }}>{e.exchange}</span>
+                    <span style={{ fontSize: "10px", color: "#90e0ef90" }}>{e.volume}</span>
+                    <SeverityBadge level={e.severity} />
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* TACTICS TAB */}
+            {tab === "tactics" && (
+              <div style={{ padding: "20px", overflowY: "auto", maxHeight: "60vh" }}>
+                <div style={{ fontSize: "10px", color: "#90e0ef70", letterSpacing: "2px", marginBottom: "16px" }}>🎣 DETECTED FISHING TACTICS THIS TIDE</div>
+                {Object.entries(
+                  events.reduce((acc, e) => { acc[e.tactic] = (acc[e.tactic] || 0) + 1; return acc; }, {})
+                ).sort((a, b) => b[1] - a[1]).map(([tactic, count], i) => (
+                  <div key={i} style={{ marginBottom: "16px" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "6px" }}>
+                      <span style={{ fontSize: "11px", color: "#caf0f8" }}>{tactic}</span>
+                      <span style={{ fontSize: "10px", color: "#90e0ef60" }}>{count}x spotted</span>
+                    </div>
+                    <div style={{ height: "8px", background: "rgba(144,224,239,0.1)", borderRadius: "4px", overflow: "hidden" }}>
+                      <div style={{
+                        width: `${(count / events.length) * 100}%`, height: "100%",
+                        background: i === 0 ? "linear-gradient(90deg,#ff6b35,#ff9f4a)"
+                          : i < 3 ? "linear-gradient(90deg,#ffd166,#ffd166aa)"
+                          : "linear-gradient(90deg,#06d6a0,#06d6a070)",
+                        borderRadius: "4px", transition: "width 0.5s ease",
+                      }} />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* ENTITIES TAB */}
+            {tab === "entities" && (
+              <div style={{ padding: "20px", overflowY: "auto", maxHeight: "60vh" }}>
+                <div style={{ fontSize: "10px", color: "#90e0ef70", letterSpacing: "2px", marginBottom: "16px" }}>🐙 SUSPECTED DEEP-SEA ACTORS</div>
+                {Object.entries(
+                  events.reduce((acc, e) => {
+                    if (!acc[e.entity]) acc[e.entity] = { count: 0, tactics: new Set(), tickers: new Set(), premium: 0 };
+                    acc[e.entity].count++;
+                    acc[e.entity].tactics.add(e.tactic);
+                    acc[e.entity].tickers.add(e.ticker);
+                    acc[e.entity].premium += parseFloat(e.premium.replace("$","").replace("M",""));
+                    return acc;
+                  }, {})
+                ).sort((a, b) => b[1].count - a[1].count).map(([entity, data], i) => (
+                  <div key={i} style={{
+                    padding: "14px 16px", marginBottom: "10px",
+                    background: "rgba(0,0,0,0.2)",
+                    border: "1.5px solid rgba(144,224,239,0.1)",
+                    borderRadius: "12px",
+                    borderLeft: `4px solid ${i===0?"#ff6b35":i<3?"#ffd166":"#06d6a0"}`,
+                  }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "8px" }}>
+                      <span style={{ fontSize: "13px", color: "#ffd166", fontFamily: "'Luckiest Guy', cursive", letterSpacing: "1px" }}>
+                        {i===0?"🦑":i<3?"🐡":"🐠"} {entity}
+                      </span>
+                      <span style={{ fontSize: "10px", color: "#90e0ef70" }}>${data.premium.toFixed(1)}M caught</span>
+                    </div>
+                    <div style={{ fontSize: "9px", color: "#90e0ef70", display: "flex", gap: "12px", flexWrap: "wrap" }}>
+                      <span>🌊 {data.count} actions</span>
+                      <span>🎣 {data.tactics.size} tactic{data.tactics.size > 1?"s":""}</span>
+                      <span>🐟 Nets: {[...data.tickers].join(", ")}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* DETAIL PANEL */}
+            {selected && (
+              <div style={{
+                borderTop: "1.5px solid rgba(6,214,160,0.3)",
+                padding: "14px 20px",
+                background: "rgba(6,214,160,0.05)",
+                display: "flex", gap: "20px", alignItems: "center", flexWrap: "wrap",
+              }}>
+                <div style={{ fontSize: "20px" }}>🔍</div>
+                <div>
+                  <div style={{ fontFamily: "'Luckiest Guy', cursive", fontSize: "16px", color: "#06d6a0", letterSpacing: "1px" }}>
+                    {selected.ticker} — {selected.tactic}
+                  </div>
+                  <div style={{ fontSize: "10px", color: "#90e0ef80", marginTop: "2px" }}>
+                    {selected.entity} · {selected.exchange} · {selected.premium} · {selected.delta}
+                  </div>
+                </div>
+                {priceHistory && <Sparkline data={priceHistory} bearish={selected.bearish} width={180} height={44} />}
+                <div style={{ marginLeft: "auto", fontSize: "10px", color: "#90e0ef80" }}>
+                  Confidence: <span style={{ color: "#06d6a0" }}>{selected.confidence}%</span>
+                </div>
+                <button onClick={() => setSelected(null)} style={{
+                  background: "none", border: "1px solid #90e0ef40",
+                  color: "#90e0ef70", padding: "4px 10px", borderRadius: "10px",
+                  cursor: "pointer", fontSize: "10px", fontFamily: "'Patrick Hand', cursive",
+                }}>✕</button>
+              </div>
+            )}
+          </div>
+
+          {/* RIGHT SIDEBAR */}
+          <div style={{
+            background: "linear-gradient(180deg, #012a3e80, #023e5870)",
+            backdropFilter: "blur(14px)",
+            border: "1.5px solid rgba(144,224,239,0.15)",
+            borderLeft: "none",
+            borderRadius: "0 16px 16px 0",
+            overflow: "hidden",
+            display: "flex", flexDirection: "column",
+          }}>
+            <div style={{ padding: "12px 16px 6px", fontSize: "9px", color: "#90e0ef70", letterSpacing: "2px", borderBottom: "1px solid rgba(144,224,239,0.1)" }}>
+              🌊 DEPTH SONAR — THREAT ZONES
+            </div>
+            <div style={{ display: "flex", justifyContent: "center", padding: "8px 0" }}>
+              <SeaSonarRing events={events} />
+            </div>
+
+            <div style={{ padding: "10px 14px", borderTop: "1px solid rgba(144,224,239,0.1)" }}>
+              <div style={{ fontSize: "9px", color: "#90e0ef70", letterSpacing: "2px", marginBottom: "10px" }}>🐠 TOP TICKERS BY CHUM VOLUME</div>
+              {events.slice(0, 6).map((e, i) => (
+                <div key={i} style={{ marginBottom: "9px" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "3px" }}>
+                    <span style={{ fontSize: "11px", color: e.bearish ? "#ff6b35" : "#06d6a0", fontFamily: "'Luckiest Guy', cursive" }}>{e.ticker}</span>
+                    <span style={{ fontSize: "9px", color: "#90e0ef60" }}>{e.volume}</span>
+                  </div>
+                  <div style={{ height: "5px", background: "rgba(144,224,239,0.1)", borderRadius: "3px", overflow: "hidden" }}>
+                    <div style={{
+                      width: `${(parseFloat(e.volume) / maxVol) * 100}%`, height: "100%",
+                      background: e.bearish ? "#ff6b35" : "#06d6a0",
+                      borderRadius: "3px", transition: "width 0.5s",
+                    }} />
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <div style={{ padding: "10px 14px", borderTop: "1px solid rgba(144,224,239,0.1)", marginTop: "auto" }}>
+              <div style={{ fontSize: "9px", color: "#90e0ef70", letterSpacing: "2px", marginBottom: "8px" }}>📡 LIVE SIGNAL STREAM</div>
+              {events.slice(0, 5).map((e, i) => (
+                <div key={`${e.id}-${tick}`} style={{ fontSize: "9px", color: "#90e0ef80", borderBottom: "1px solid rgba(144,224,239,0.06)", paddingBottom: "4px", marginBottom: "4px", lineHeight: "1.6" }}>
+                  <span style={{ color: "#90e0ef40" }}>[{e.timestamp}] </span>
+                  <span style={{ color: e.bearish ? "#ff6b35aa" : "#06d6a0aa" }}>{e.ticker}</span>
+                  {" "}{e.tactic.split(" ").slice(0, 3).join(" ")}
+                </div>
+              ))}
+              <div style={{ marginTop: "10px", fontSize: "8px", color: "#90e0ef40", textAlign: "center", lineHeight: "1.7" }}>
+                🐚 FOR RESEARCH & ECONOMIC THEORY<br/>
+                NOT FINANCIAL ADVICE, BARNACLE!
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
