@@ -1,0 +1,21 @@
+// Add to your component
+const [userActions, setUserActions] = useState([]);
+
+const logAction = (actionType, metadata) => {
+  const entry = {
+    timestamp: Date.now(),
+    action: actionType, // e.g., "COMMODITY_SELECT", "TAB_CHANGE", "REFRESH_CLICK"
+    metadata,
+    scanActive,
+    selectedCommodity,
+    tickCount: tickRef.current
+  };
+  setUserActions(prev => [...prev, entry]);
+  // Optionally: send to research backend
+};
+
+// Then wrap your onClick handlers:
+onClick={() => {
+  logAction("COMMODITY_SELECT", { commodityId: c.id });
+  setSelectedCommodity(selectedCommodity === c.id ? null : c.id);
+}}
