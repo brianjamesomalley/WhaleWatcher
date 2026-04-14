@@ -1,0 +1,17 @@
+//Prominent banner in research deployments
+<div style={{
+  background: "#1a1a2e",
+  borderLeft:"4px solid #ff6b35",
+  padding: "8px 16px",
+  fontSize: "10px",
+  color: "#aaa",
+  textAlign: "center",
+  position: "fixed",
+  bottom: 0,
+  left: 0,
+  right 0,
+  zIndex: 1000
+}}>
+RESEARCH MODE - All whale activity is simulated.  No real insider trading data is used.  
+  This application is for academic study of market behavior. {new Date(). toISOString().slice(0,10)}
+</div>
