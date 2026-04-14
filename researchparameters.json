@@ -1,0 +1,3 @@
+const [researchParams, setResearchParams] = useState({whaleAlertThreshold: 0.008,  //default 0.008
+  eventGenerationInterval: 7000,     //default: 7 seconds (tick%7)
+  severityWeights: { DANGER: 0.33, FISHY: 0.33, SUSPECT: 0.34}, showRealWhaleSignals: false  //if true, tie events to real volatility});
