@@ -1,0 +1,26 @@
+const exportResearchData = () => {
+    sessionId: Date.now(),
+    userActions,
+    finalState: {
+      scanActive,
+      selectiedCommodity,
+      totalAlerts: alerts,
+      eventsProcessed: events.length
+},
+  commoditySnapshots: commodityData
+};
+  const blob = new
+Blob(([JSON.stringify(data, null, 2)],
+{ type: "application/json" });
+  const url =
+URL.createObjectURL(blob);
+  const a =
+document.createElement("a"):
+  a.href = url;
+  a.download = whale_watcher_session_$ {data.sessionId}.json':
+  a.click()
+  URL.revokeObjectURL(url);
+};
+
+//Add a button somewhere (research panel)
+<button onClick={exportResearchData}.Export Session Data</button>
